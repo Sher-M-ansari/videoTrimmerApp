@@ -1,12 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   StyleSheet,
   NativeEventEmitter,
   NativeModules,
-  Alert,
   Pressable,
-  View,
-  Text,
+  PermissionsAndroid,
+  ToastAndroid,
 } from 'react-native';
 import { showEditor } from 'react-native-video-trim';
 import { RF } from '../../../theme/responsive';
@@ -16,226 +15,141 @@ import { GoBack } from '../../../utils/nav.service';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import RNFS from 'react-native-fs';
 
-import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
 const VideoCutterScreen = ({ route }: any) => {
   const { videoUri } = route?.params;
-  let urlAvailable: any = null;
-  const videoRef = useRef(null);
-  const [localUrl, setLocalUrl] = useState<any>(null);
-  const [isPlay, setIsPlay] = useState<any>(true);
-  const [isEnded, setIsEnded] = useState(false);
-  useEffect(() => {
-    if (videoUri) {
-      showEditor(videoUri, {});
-    } else {
-      GoBack();
-    }
+  const videoRef = useRef<Video>(null);
+  const urlAvailable = useRef(false);
+  const [localUrl, setLocalUrl] = useState<string | null>(null);
+  const [isPlay, setIsPlay] = useState(true);
+
+  const handleEditorEvents = useCallback(() => {
     const eventEmitter = new NativeEventEmitter(NativeModules?.VideoTrim);
     const subscription = eventEmitter.addListener('VideoTrim', event => {
       switch (event?.name) {
-        case 'onFinishTrimming': {
-          urlAvailable = true;
+        case 'onFinishTrimming':
+          urlAvailable.current = true;
           setIsPlay(true);
-          setLocalUrl(event);
-
+          setLocalUrl(event.outputPath);
           break;
-        }
-        case 'onLoad': {
-          // on media loaded successfully
-          // console.log('onLoadListener', event);
+        case 'onCancel':
+          if (!urlAvailable.current) GoBack();
           break;
-        }
-        case 'onShow': {
-          // console.log('onShowListener', event);
-          break;
-        }
-        case 'onHide': {
-          // console.log('onHide', event);
-          break;
-        }
-        case 'onStartTrimming': {
-          // console.log('onStartTrimming', event);
-          break;
-        }
-        case 'onFinishTrimming': {
-          // console.log('onFinishTrimming', event);
-          break;
-        }
-        case 'onCancelTrimming': {
-          // console.log('onCancelTrimming', event);
-          break;
-        }
-        case 'onCancel': {
-          if (urlAvailable === null) {
-            GoBack();
-          }
-          // console.log('onCancel', event,urlAvailable);
-          break;
-        }
-        case 'onError': {
-          // console.log('onError', event);
-          break;
-        }
-        case 'onLog': {
-          // console.log('onLog', event);
-          break;
-        }
-        case 'onStatistics': {
-          // console.log('onStatistics', event);
-          break;
-        }
       }
     });
-
-    return () => {
-      subscription.remove();
-    };
+    return () => subscription.remove();
   }, []);
-  const trimVideo = (videoUri: any) => {
+
+  useEffect(() => {
+    if (!videoUri) {
+      GoBack();
+      return;
+    }
+
     showEditor(videoUri, {});
-  };
-  const onButtonPress = () => {
-    if (localUrl?.duration > 2137) {
-      trimVideo(localUrl?.outputPath);
-    } else {
-      Alert.alert(
-        'Video is too short',
-        'Please select a video that is at least 5 seconds long to trim it.',
-      );
-    }
-  };
-  const playPause = () => {
-    if (isEnded) {
-      videoRef?.current?.seek(0);
-      setIsPlay(!isPlay);
-      setIsEnded(false);
-    } else {
-      setIsPlay(!isPlay);
-    }
-  };
-  console.log(">>localUrl && localUrl?.outputPath", localUrl && localUrl?.outputPath)
-  const saveVideoToVideoCutterFolder = async (outputPath) => {
+    const cleanup = handleEditorEvents();
+    return () => {
+      cleanup();
+      videoRef.current?.pause();
+    };
+  }, [videoUri, handleEditorEvents]);
+
+  const saveVideoToDownloads = useCallback(async (outputPath: string) => {
     try {
-      // Define the external folder path (e.g., Downloads/VideoCutter)
-      const folderPath = `${RNFS.ExternalStorageDirectoryPath}/VideoCutter`;
+      const hasPermission = await requestExternalStoragePermission();
+      if (!hasPermission) return;
 
-      // Check if folder exists, if not create it
-      const folderExists = await RNFS.exists(folderPath);
-      if (!folderExists) {
-        await RNFS.mkdir(folderPath);
-        console.log('Folder created:', folderPath);
+      const downloadsPath = RNFS.DownloadDirectoryPath ||
+        `${RNFS.ExternalStorageDirectoryPath}/Download`;
+
+      const originalFilename = outputPath.split('/').pop();
+      if (!originalFilename) throw new Error('Invalid filename');
+
+      const destPath = `${downloadsPath}/${originalFilename}`;
+      const fileExists = await RNFS.exists(destPath);
+      const finalPath = fileExists
+        ? `${downloadsPath}/${Date.now()}_${originalFilename}`
+        : destPath;
+
+      await RNFS.copyFile(outputPath, finalPath);
+
+      if (__DEV__) {
+        console.log('Video saved to:', finalPath);
       }
-
-      // Define the destination path for the video
-      const fileName = outputPath.split('/').pop(); // Extract file name
-      const destinationPath = `${folderPath}/${fileName}`;
-
-      // Copy the video to the new folder
-      await RNFS.copyFile(outputPath, destinationPath);
-      console.log('Video saved at:', destinationPath);
-
-      return destinationPath;
-    } catch (error) {
-      console.error('Error saving video:', error.message);
+      ToastAndroid.show('Video saved to Downloads!', ToastAndroid.LONG);
+    } catch (err) {
+      if (__DEV__) {
+        console.error('Error saving video:', err);
+      }
+      ToastAndroid.show('Error saving video!', ToastAndroid.LONG);
     }
-  };
+  }, []);
+
+  const requestExternalStoragePermission = useCallback(async () => {
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+        {
+          title: 'Storage Permission',
+          message: 'App needs access to storage to save videos',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        }
+      );
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
+    } catch (err) {
+      if (__DEV__) console.warn(err);
+      return false;
+    }
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    if (localUrl) {
+      saveVideoToDownloads(localUrl);
+    }
+  }, [localUrl, saveVideoToDownloads]);
+
   return (
-    <Pressable
-      disabled={localUrl === null}
-      // onPress={() => playPause()}
-      style={[styles.mainView]}>
-      {localUrl && localUrl?.outputPath?.length > 0 && (
-        <Video
-          source={{ uri: localUrl?.outputPath }}
-          controls={true}
-          playWhenInactive={false}
-          paused={isPlay}
-          ref={videoRef}
-          resizeMode="contain"
-          onEnd={() => {
-            setIsEnded(true);
-            setIsPlay(true);
-          }}
-          style={{ flex: 1, backgroundColor: 'brown', height: '100%', width: '100%', position: "absolute" }}
-          onError={(e: any) => console.log('Error VIDEO', e)}
-        // style={StyleSheet.absoluteFill}
-        />
+    <Pressable style={styles.mainView}>
+      {localUrl && (
+        <>
+          <Video
+            source={{ uri: localUrl }}
+            controls
+            paused={isPlay}
+            ref={videoRef}
+            resizeMode="contain"
+            onEnd={() => setIsPlay(true)}
+            style={StyleSheet.absoluteFill}
+          />
+          <Pressable
+            onPress={handleDownload}
+            style={styles.downloadButton}
+          >
+            <MaterialIcons
+              name="download-for-offline"
+              size={RF(50)}
+              color={COLORS.DARK_YELLOW}
+            />
+          </Pressable>
+        </>
       )}
-      {localUrl && localUrl?.outputPath?.length > 0 && <Pressable onPress={() => {
-        console.log(">>>HERE IS DATA", localUrl, localUrl?.outputPath)
-        saveVideoToVideoCutterFolder(localUrl?.outputPath)
-      }} style={{ right: 15, top: 30, position: 'absolute', alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-        <MaterialIcons name="download-for-offline" size={RF(50)} color={COLORS.DARK_YELLOW} />
-      </Pressable>}
     </Pressable>
   );
 };
+
 export default VideoCutterScreen;
 
 const styles = StyleSheet.create({
   mainView: {
-    alignItems: 'center',
-    justifyContent: 'center',
     flex: 1,
-    backgroundColor: 'pink'
+    backgroundColor: COLORS.BLACK
   },
-  subHeading: {
-    color: COLORS.DARK_YELLOW,
-    fontSize: RF(16),
-    marginTop: RF(1),
-    textAlign: 'center',
-  },
-  previewTxt: { fontSize: RF(20), color: COLORS.DARK_YELLOW },
-  btnView1: {
-    marginHorizontal: RF(20),
-    backgroundColor: COLORS.DARK_YELLOW,
-    height: RF(60),
-    width: RF(60),
-    borderRadius: RF(100),
-    padding: RF(10),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playBtn: {
+  downloadButton: {
+    right: 15,
+    top: RF(50),
     position: 'absolute',
-    backgroundColor: COLORS.DARK_YELLOW,
-    height: RF(60),
-    width: RF(60),
-    borderRadius: RF(30),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  innerView: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnsView: {
-    height: RF(100),
-    width: '100%',
-    position: 'absolute',
-    bottom: 40,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  topView: {
-    flexDirection: 'row',
-    position: 'absolute',
-    top: 70,
-    width: '62%',
-    alignSelf: 'flex-start',
-    justifyContent: 'space-between',
-    marginHorizontal: RF(25),
-  },
-  crossView: {
-    backgroundColor: COLORS.DARK_YELLOW,
-    borderRadius: RF(20),
-    padding: RF(10),
-  },
-  previewTxtView: {
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingLeft: RF(16),
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

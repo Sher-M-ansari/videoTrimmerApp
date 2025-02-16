@@ -1,16 +1,16 @@
-import React, {useState} from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, Alert} from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import {RF} from '../../../theme/responsive';
-import {launchImageLibrary} from 'react-native-image-picker';
-import {useNavigation} from '@react-navigation/native';
-import {COLORS} from '../../../theme/colors';
+import { RF } from '../../../theme/responsive';
+import { launchImageLibrary } from 'react-native-image-picker';
+import { useNavigation } from '@react-navigation/native';
+import { COLORS } from '../../../theme/colors';
 import FastImage from 'react-native-fast-image';
 import { ROUTES } from '../../../utils/routes';
 
 const MenuScreen = () => {
   const [videoUri, setVideoUri] = useState<any>(null);
-  const navigation = useNavigation(); // Hook to access navigation
+  const navigation = useNavigation();
 
   const chooseVideoFromGallery = () => {
     const options = {
@@ -33,13 +33,13 @@ const MenuScreen = () => {
       }
     });
   };
-  const recordNewVideo=()=>{
+  const recordNewVideo = () => {
     navigation.navigate(ROUTES.RECORDVIDEOSCREEN)
   }
 
   return (
     <LinearGradient
-      colors={['#FFD700', '#191919']} // Dark yellow to dark gradient
+      colors={['#FFD700', '#191919']}
       style={styles.container}>
       <View style={styles.headerContainer}>
         <FastImage
@@ -47,13 +47,14 @@ const MenuScreen = () => {
           style={styles.logoImage}
         />
         <Text style={styles.title}>
+          <Text style={styles.proText}>DeepCut</Text>
+        </Text>
+        <Text style={styles.title}>
           <Text style={styles.videoText}>Video </Text>
           <Text style={styles.cutterText}>Cutter</Text>
           <Text style={styles.proText}> Pro</Text>
         </Text>
       </View>
-
-      {/* Buttons */}
       <View style={styles.buttonsContainer}>
         <TouchableOpacity
           style={styles.button}
@@ -88,7 +89,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: RF(10),
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 10},
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.25,
     shadowRadius: 5,
     elevation: 5,
@@ -103,7 +104,7 @@ const styles = StyleSheet.create({
     marginTop: RF(10),
     textAlign: 'center',
     textShadowColor: '#000',
-    textShadowOffset: {width: 2, height: 2},
+    textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 3,
   },
   videoText: {
@@ -141,7 +142,7 @@ const styles = StyleSheet.create({
   outlineButtonText: {
     color: COLORS.whiteFF,
   },
-  logoImage: {borderRadius: RF(100), width: RF(140), height: RF(140)},
+  logoImage: { borderRadius: RF(100), width: RF(140), height: RF(140) },
 });
 
 export default MenuScreen;
