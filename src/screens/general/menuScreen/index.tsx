@@ -47,7 +47,7 @@ const MenuScreen = () => {
           style={styles.logoImage}
         />
         <Text style={styles.title}>
-          <Text style={styles.proText}>DeepCut</Text>
+          <Text style={styles.proTextTitle}>DeepCut</Text>
         </Text>
         <Text style={styles.title}>
           <Text style={styles.videoText}>Video </Text>
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     color: '#191919',
   },
   title: {
-    fontSize: RF(32),
+    fontSize: RF(20),
     fontWeight: 'bold',
     marginTop: RF(10),
     textAlign: 'center',
@@ -114,6 +114,10 @@ const styles = StyleSheet.create({
     color: COLORS.whiteFF,
   },
   proText: {
+    color: '#FF8C00',
+  },
+  proTextTitle: {
+    fontSize: RF(40),
     color: '#FF8C00',
   },
   buttonsContainer: {
